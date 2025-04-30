@@ -2,21 +2,19 @@ from flask import Flask, request, jsonify
 from PIL import Image
 import io
 import numpy as np
-import joblib  # or use pickle
+import face_recognition
+import pickle
 import os
 
 app = Flask(__name__)
 
-# Load the model (make sure model.pkl is in the same folder or adjust the path)
+# Load encodings and names
 MODEL_PATH = "./mlapi/model/face_recognition_model.pkl"
-model = joblib.load(MODEL_PATH)
+with open(MODEL_PATH, "rb") as f:
+    data = pickle.load(f)
 
-def preprocess_image(image_bytes):
-    """Convert image bytes to numpy array for prediction."""
-    image = Image.open(io.BytesIO(image_bytes)).convert("L")  # convert to grayscale if needed
-    image = image.resize((28, 28))  # example resize
-    image_array = np.array(image).reshape(1, -1) / 255.0  # flatten and normalize
-    return image_array
+known_encodings = data["encodings"]
+known_names = data["names"]
 
 @app.route('/predict', methods=['POST'])
 def predict():
@@ -28,12 +26,38 @@ def predict():
         return jsonify({"error": "No selected image"}), 400
 
     try:
-        img_bytes = file.read()
-        input_data = preprocess_image(img_bytes)
-        prediction = model.predict(input_data)
-        return jsonify({"prediction": prediction.tolist()})
+        image = face_recognition.load_image_file(file)
+        face_encodings = face_recognition.face_encodings(image)
+
+        if len(face_encodings) == 0:
+            return jsonify({"error": "No face detected."}), 200
+
+        results = []
+
+        for i, encoding in enumerate(face_encodings):
+            distances = face_recognition.face_distance(known_encodings, encoding)
+            best_match_index = np.argmin(distances)
+            best_distance = distances[best_match_index]
+
+            if best_distance < 0.5:  # Adjust threshold as needed
+                name = known_names[best_match_index]
+                results.append({
+                    "face": i + 1,
+                    "recognized": True,
+                    "name": name,
+                    "distance": float(best_distance)
+                })
+            else:
+                results.append({
+                    "face": i + 1,
+                    "recognized": False,
+                    "distance": float(best_distance)
+                })
+
+        return jsonify({"results": results})
+
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(port=3300, debug=True)
