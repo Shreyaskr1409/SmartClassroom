@@ -1,33 +1,29 @@
 GO_VERSION=1.20.5
-GO_BIN_DIR=/usr/local/go
 LIBCAMERA_PACKAGE=libcamera-apps
 
 install:
-	@echo "Installing Go version $(GO_VERSION)..."
-	# Download and install Go
-	wget https://golang.org/dl/go$(GO_VERSION).linux-armv6l.tar.gz -O /tmp/go.tar.gz
-	sudo tar -C /usr/local -xvzf /tmp/go.tar.gz
-	rm /tmp/go.tar.gz
-	# Set up Go path
-	echo "export PATH=$(GO_BIN_DIR)/bin:\$$PATH" >> ~/.bashrc
-	source ~/.bashrc
-
-	@echo "Installing necessary Go packages..."
-	# Install Go packages (periph.io for GPIO and other dependencies)
-	go get -u periph.io/x/host/v3
-	go get -u periph.io/x/conn/v3/gpio
-
-	@echo "Installing libcamera-jpeg..."
-	# Install libcamera-jpeg package
+	@echo "Installing Python and Go..."
 	sudo apt-get update
+	# Install Python and pip
+	sudo apt-get install -y python3 python3-pip
+	# Install Go
+	sudo apt-get install -y golang-go
+	# Install libcamera-jpeg package
 	sudo apt-get install -y $(LIBCAMERA_PACKAGE)
 
-	@echo "Go, necessary packages, and libcamera-jpeg have been installed."
+	@echo "Installing Python dependencies from requirements.txt..."
+	pip3 install -r mlapi/requirements.txt
 
-# Run the program (initialize camera and run main.go)
+	@echo "Installing Go packages..."
+	go install periph.io/x/host/v3@latest
+	go install periph.io/x/conn/v3/gpio@latest
+
+	@echo "Installation complete."
+
 run:
-	@echo "Initializing camera..."
-	# Make sure the camera is enabled
 	sudo raspi-config nonint do_camera 0
-	# Run the main Go application
+	@echo "Running servers..."
+
+	cd mlapi && nohup python3 app.py > ../mlapi.log 2>&1 &
+
 	go run main.go
