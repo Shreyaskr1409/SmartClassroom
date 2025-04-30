@@ -7,7 +7,10 @@ import (
 	"image/jpeg"
 	"io"
 	"log"
+	"mime/multipart"
 	"net/http"
+	"os"
+	"path/filepath"
 	"time"
 
 	"periph.io/x/conn/v3/gpio"
@@ -62,28 +65,57 @@ func GetDistance() float64 {
 	return distance
 }
 
-// SendImage sends the captured image to a URL
+// SendImage sends the captured image to the Flask server for face recognition
 func SendImage(img image.Image) (string, error) {
-	var buf bytes.Buffer
-	// Encode the image into a buffer
-	err := jpeg.Encode(&buf, img, nil)
+	// Create a temporary file to store the image
+	tmpfile, err := os.CreateTemp("", "image-*.jpg")
+	if err != nil {
+		return "", fmt.Errorf("failed to create temporary file: %v", err)
+	}
+	defer os.Remove(tmpfile.Name()) // Clean up after function completes
+
+	// Encode the image into the temporary file
+	err = jpeg.Encode(tmpfile, img, nil)
 	if err != nil {
 		return "", fmt.Errorf("failed to encode image: %v", err)
 	}
 
-	// Send the image as HTTP POST request
-	resp, err := http.Post("http://example.com/upload", "image/jpeg", &buf)
+	// Re-open the file for sending it in the request
+	tmpfile.Seek(0, io.SeekStart)
+
+	// Create a multipart form file
+	body := new(bytes.Buffer)
+	writer := multipart.NewWriter(body)
+	part, err := writer.CreateFormFile("image", filepath.Base(tmpfile.Name()))
+	if err != nil {
+		return "", fmt.Errorf("failed to create form file: %v", err)
+	}
+
+	// Copy the image file to the multipart form
+	_, err = io.Copy(part, tmpfile)
+	if err != nil {
+		return "", fmt.Errorf("failed to copy file contents: %v", err)
+	}
+
+	// Close the writer to finalize the form
+	err = writer.Close()
+	if err != nil {
+		return "", fmt.Errorf("failed to close writer: %v", err)
+	}
+
+	// Send the image as an HTTP POST request
+	resp, err := http.Post("http://localhost:3300/predict", writer.FormDataContentType(), body)
 	if err != nil {
 		return "", fmt.Errorf("failed to send image: %v", err)
 	}
 	defer resp.Body.Close()
 
 	// Read and return the response
-	body, err := io.ReadAll(resp.Body) // Replaced ioutil.ReadAll with io.ReadAll
+	responseBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return "", fmt.Errorf("failed to read response body: %v", err)
 	}
-	return string(body), nil
+	return string(responseBody), nil
 }
 
 // MonitorSensor continuously monitors the ultrasonic sensor and triggers picture taking and sending
