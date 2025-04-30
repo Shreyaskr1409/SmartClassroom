@@ -1,42 +1,33 @@
-PYTHON=python3
-PIP=$(VENV_DIR)/bin/pip
-VENV_DIR=mlapi/venv
-GO_EXECUTABLE=$(shell command -v go 2> /dev/null)
+GO_VERSION=1.20.5
+GO_BIN_DIR=/usr/local/go
+LIBCAMERA_PACKAGE=libcamera-apps
 
-# Default Target
-all: setup_python setup_go
+install:
+	@echo "Installing Go version $(GO_VERSION)..."
+	# Download and install Go
+	wget https://golang.org/dl/go$(GO_VERSION).linux-armv6l.tar.gz -O /tmp/go.tar.gz
+	sudo tar -C /usr/local -xvzf /tmp/go.tar.gz
+	rm /tmp/go.tar.gz
+	# Set up Go path
+	echo "export PATH=$(GO_BIN_DIR)/bin:\$$PATH" >> ~/.bashrc
+	source ~/.bashrc
 
-## Python Environment Setup
-setup_python:
-	@if [ ! -d "$(VENV_DIR)" ]; then \
-		echo "Creating Python virtual environment..."; \
-		$(PYTHON) -m venv $(VENV_DIR); \
-		fi
-	@echo "Installing Python dependencies..."
-	$(PIP) install --upgrade pip
-	$(PIP) install -r mlapi/requirements.txt
+	@echo "Installing necessary Go packages..."
+	# Install Go packages (periph.io for GPIO and other dependencies)
+	go get -u periph.io/x/host/v3
+	go get -u periph.io/x/conn/v3/gpio
 
-## Golang Environment Setup
-setup_go:
-	ifndef GO_EXECUTABLE
-	@echo "Go not found! Please install Golang manually for your platform."
-	@exit 1
-else
-	@echo "Go found at $(GO_EXECUTABLE). Setting up Go modules..."
-	cd . && go mod tidy
-	cd . && go build ./...
-endif
+	@echo "Installing libcamera-jpeg..."
+	# Install libcamera-jpeg package
+	sudo apt-get update
+	sudo apt-get install -y $(LIBCAMERA_PACKAGE)
 
-## Run Python API
-run_mlapi:
-	@echo "Starting Python Face Detection API..."
-	source $(VENV_DIR)/bin/activate && uvicorn mlapi.main:app --host 0.0.0.0 --port 8000
+	@echo "Go, necessary packages, and libcamera-jpeg have been installed."
 
-## Run Go App (Example)
-run_go_server:
-	cd cmd/server && go run main.go
-
-## Clean All
-clean:
-	rm -rf $(VENV_DIR)
-	go clean
+# Run the program (initialize camera and run main.go)
+run:
+	@echo "Initializing camera..."
+	# Make sure the camera is enabled
+	sudo raspi-config nonint do_camera 0
+	# Run the main Go application
+	go run main.go
