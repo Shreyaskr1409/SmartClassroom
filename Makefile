@@ -14,9 +14,8 @@ install:
 	@echo "Installing Python dependencies from requirements.txt..."
 	pip3 install -r mlapi/requirements.txt
 
-	@echo "Installing Go packages..."
-	go install periph.io/x/host/v3@latest
-	go install periph.io/x/conn/v3/gpio@latest
+	@echo "Tidying Go modules..."
+	go mod tidy
 
 	@echo "Installation complete."
 
@@ -27,3 +26,7 @@ run:
 	cd mlapi && nohup python3 app.py > ../mlapi.log 2>&1 &
 
 	go run main.go
+
+test:
+	chmod +x run_tests.sh cleanup.sh
+	./run_tests.sh
